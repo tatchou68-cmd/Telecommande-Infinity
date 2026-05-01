@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinity Control Pro</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <!-- Optimisation pour mobile -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        :root { --bleu: #0082c3; --rouge: #d32f2f; --fond: #0f0f0f; }
+        body { font-family: sans-serif; background: var(--fond); color: white; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .group { width: 100%; max-width: 450px; background: rgba(255,255,255,0.03); border-radius: 15px; padding: 10px; margin-bottom: 15px; border-top: 4px solid var(--color); box-sizing: border-box; }
+        .choix-joueurs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .card-joueur { background: #252525; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; align-items: center; border: 1px solid #444; }
+        .card-joueur img { width: 45px; height: 45px; border-radius: 50%; margin-bottom: 5px; object-fit: cover; background: #000; }
+        .card-joueur span { font-size: 13px; font-weight: bold; margin-bottom: 8px; }
+        .btn-container { display: flex; gap: 4px; width: 100%; }
+        .btn-u { flex: 1; border: none; border-radius: 4px; padding: 6px 0; color: white; font-size: 10px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .u1 { background: #444; } .u2 { background: #666; } .u3 { background: #2e7d32; }
+        .status { font-size: 10px; color: #4caf50; margin-top: 10px; }
+        .reset { background: none; border: 1px solid #333; color: #666; padding: 8px 15px; border-radius: 5px; margin-top: 20px; font-size: 11px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>INFINITY CONTROL</h2>
+    <div class="group" style="--color: var(--bleu)">
+        <h3 style="color: var(--bleu); text-align: center; margin: 5px;">MULTIMÉDIA</h3>
+        <div class="choix-joueurs" id="liste-multi"></div>
+    </div>
+    <div class="group" style="--color: var(--rouge)">
+        <h3 style="color: var(--rouge); text-align: center; margin: 5px;">CONFORT</h3>
+        <div class="choix-joueurs" id="liste-confort"></div>
+    </div>
+    <button class="reset" onclick="resetMatch()">Réinitialiser le match</button>
+    <div id="notif" class="status">Connecté au stade</div>
+
+    <script>
+    // 1. CONFIGURATION
+    const firebaseConfig = {
+        apiKey: "AIzaSyCqgVEYrpem4KgV8OXqFN9ybMNPIz8gg9o",
+        authDomain: "challenge-infinity.firebaseapp.com",
+        databaseURL: "https://challenge-infinity-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "challenge-infinity",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const teamMulti = ["Anthony", "Bruno", "Lionel", "Mika", "Paolo", "Raph", "Renaud", "Stephane", "Nico"];
+    const teamConfort = ["Christine", "Elias", "Julien", "Yassine", "Severine", "Fatima", "Emilia", "Olivier", "Hayet"];
+
+    // 2. GÉNÉRATION DES BOUTONS
+    function genererBoutons() {
+        const renderTeam = (list, containerId, equipe) => {
+            const container = document.getElementById(containerId);
+            container.innerHTML = "";
+            list.forEach(nom => {
+                container.innerHTML += `
+                    <div class="card-joueur">
+                        <img src="${nom.toLowerCase()}.png" onerror="this.src='ballon.png'">
+                        <span>${nom}</span>
+                        <div class="btn-container">
+                            <button class="btn-u u1" onclick="actionVente('${equipe}', '${nom}', 8, 1)">U1</button>
+                            <button class="btn-u u2" onclick="actionVente('${equipe}', '${nom}', 16, 2)">U2</button>
+                            <button class="btn-u u3" onclick="actionVente('${equipe}', '${nom}', 100, 3)">U3</button>
+                        </div>
+                    </div>`;
+            });
+        };
+        renderTeam(teamMulti, 'liste-multi', 'multi');
+        renderTeam(teamConfort, 'liste-confort', 'confort');
+    }
+
+    // 3. ACTION DE VENTE (Le coeur du jeu)
+    function actionVente(equipe, nomJoueur, valeur, touches) {
+    const ref = db.ref('match');
+    ref.once('value').then(snap => {
+        // On force des valeurs par défaut si la base est vide ou corrompue
+        let data = snap.val() || {};
+        data.position = Number(data.position) || 50;
+        data.scoreMulti = Number(data.scoreMulti) || 0;
+        data.scoreConfort = Number(data.scoreConfort) || 0;
+        data.passesMulti = Number(data.passesMulti) || 0;
+        data.passesConfort = Number(data.passesConfort) || 0;
+        
+        data.dernierVendeur = nomJoueur;
+        data.equipeVendeur = equipe;
+        data.updateTime = Date.now();
+        data.matchTermine = false; 
+
+        if (equipe === 'multi') {
+            data.passesMulti += touches;
+            data.passesConfort = 0;
+            
+            if (valeur === 100 || data.passesMulti >= 3) {
+                data.position = 100; 
+                data.scoreMulti += 1;
+                data.passesMulti = 0;
+                data.butVientDeMarquer = true;
+            } else {
+                data.position = Math.min(90, data.position + valeur);
+                data.butVientDeMarquer = false;
+            }
+        } else {
+            // --- ÉQUIPE CONFORT (CORRECTION ICI) ---
+            data.passesConfort += touches;
+            data.passesMulti = 0;
+            
+            if (valeur === 100 || data.passesConfort >= 3) {
+                data.position = 0; // On force le but à gauche
+                data.scoreConfort += 1;
+                data.passesConfort = 0;
+                data.butVientDeMarquer = true;
+            } else {
+                // SOUSTRACTION : On enlève la valeur à la position actuelle
+                // On utilise Number(valeur) pour être sûr que JS ne fasse pas d'erreur
+                data.position = Math.max(10, data.position - Number(valeur));
+                data.butVientDeMarquer = false;
+            }
+        }
+
+        // On envoie les données propres à Firebase
+        ref.set(data).then(() => {
+            console.log("Firebase mis à jour ! Position : " + data.position);
+            if (data.butVientDeMarquer) {
+                setTimeout(() => {
+                    ref.update({ position: 50, butVientDeMarquer: false, dernierVendeur: "" });
+                }, 3500);
+            }
+        });
+    });
+}
+
+    // 4. RÉCAPITULATIF ET RESET
+    function resetMatch() {
+        const ref = db.ref('match');
+        ref.once('value').then(snap => {
+            const data = snap.val() || { scoreMulti: 0, scoreConfort: 0 };
+            
+            // Affichage des INFINITY (scores)
+            let recap = "🏆 RÉCAPITULATIF DU MATCH 🏆\n\n";
+            recap += `MULTIMÉDIA : ${data.scoreMulti || 0} Infinity réalisé(s)\n`;
+            recap += `CONFORT : ${data.scoreConfort || 0} Infinity réalisé(s)\n`;
+            
+            if (confirm(recap + "\nSouhaitez-vous réinitialiser le stade ?")) {
+                ref.set({ 
+                    position: 50, 
+                    scoreMulti: data.scoreMulti, 
+                    scoreConfort: data.scoreConfort,
+                    passesMulti: 0, 
+                    passesConfort: 0, 
+                    dernierVendeur: "",
+                    updateTime: Date.now(),
+                    matchTermine: true 
+                }).then(() => {
+                    setTimeout(() => {
+                        ref.update({ 
+                            matchTermine: false,
+                            scoreMulti: 0,
+                            scoreConfort: 0 
+                        });
+                    }, 10000);
+                });
+            }
+        });
+    }
+
+    // Lancement au démarrage
+    genererBoutons();
+</script>
+</body>
+</html>
